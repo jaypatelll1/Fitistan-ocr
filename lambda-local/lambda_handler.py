@@ -21,13 +21,13 @@ def get_ocr():
     if ocr is None:
         ocr = PaddleOCR(
             lang='ch',
-            det_model_dir='ch_PP-OCRv4_server_det',
-            rec_model_dir='ch_PP-OCRv4_server_rec',
-            use_angle_cls=True,
-            det_db_thresh=0.1,
-            det_db_box_thresh=0.1,
-            drop_score=0.1,
-            use_gpu=False
+            ocr_version='PP-OCRv4',
+            use_textline_orientation=True,
+            text_det_thresh=0.1,
+            text_det_box_thresh=0.1,
+            text_rec_score_thresh=0.1,
+            use_gpu=False,
+            show_log=False
         )
     return ocr
 
