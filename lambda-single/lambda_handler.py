@@ -9,6 +9,10 @@ import boto3
 import tempfile
 from urllib.parse import unquote_plus
 
+# Must be set before importing paddleocr - Lambda filesystem is read-only except /tmp
+os.environ['HOME'] = '/tmp'
+os.environ['PADDLEX_HOME'] = '/tmp'
+os.environ['HF_HOME'] = '/tmp'
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
 from paddleocr import PaddleOCR

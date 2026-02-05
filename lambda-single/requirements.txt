@@ -1,7 +1,7 @@
 # Bib extraction dependencies
 setuptools
 paddlepaddle==3.0.0
-paddleocr>=2.9.0
+paddleocr==2.9.1
 boto3>=1.26.0
 opencv-python-headless>=4.5.0
-Pillow>=9.0.0
+Pillow>=10.0.0
