@@ -26,10 +26,14 @@ def get_ocr():
     if ocr is None:
         ocr = PaddleOCR(
             lang='ch',
+            ocr_version='PP-OCRv4',
             use_angle_cls=True,
-            det_db_thresh=0.1,
-            det_db_box_thresh=0.1,
-            drop_score=0.1,
+            use_gpu=False,
+            show_log=False,
+            use_textline_orientation=True,
+            text_det_thresh=0.1,
+            text_det_box_thresh=0.1,
+            text_rec_score_thresh=0.1,
         )
     return ocr
 
