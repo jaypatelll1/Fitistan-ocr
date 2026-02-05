@@ -27,6 +27,7 @@ def get_ocr():
             det_db_thresh=0.1,
             det_db_box_thresh=0.1,
             drop_score=0.1,
+            use_gpu=False
         )
     return ocr
 
