@@ -45,8 +45,8 @@ def init_models():
         lang="ch",
         ocr_version="PP-OCRv4",
         rec_model_dir="ch_PP-OCRv4_server_rec",
-        use_textline_orientation=True,
         device="gpu",
+        use_angle_cls=False,
         det_db_thresh=0.1,
         det_db_box_thresh=0.1,
         drop_score=0.1,
@@ -63,7 +63,7 @@ def init_models():
 
 def extract_bibs(ocr, path):
     """Extract numeric bib numbers from image."""
-    result = ocr.ocr(path, cls=True)
+    result = ocr.ocr(path, cls=False)
     bibs = []
     if result and result[0]:
         for det in result[0]:
