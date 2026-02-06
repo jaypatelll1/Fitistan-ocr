@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM --platform=linux/amd64 amazon/aws-lambda-python:3.12
 
 # Install system dependencies and build tools
 RUN dnf install -y \
