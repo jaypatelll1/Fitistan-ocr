@@ -1,0 +1,7 @@
+opencv-python
+insightface
+numpy
+psycopg[binary]
+pgvector
+python-dotenv
+onnxruntime

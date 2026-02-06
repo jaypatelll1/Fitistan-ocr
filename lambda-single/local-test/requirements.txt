@@ -1,0 +1,7 @@
+python-dotenv>=1.0.0
+boto3>=1.26.0
+psycopg2-binary>=2.9.0
+paddlepaddle==3.0.0
+paddleocr==2.9.1
+opencv-python-headless>=4.5.0
+Pillow>=10.0.0
