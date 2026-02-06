@@ -42,8 +42,13 @@ def init_models(use_gpu=True):
     ocr = PaddleOCR(
         lang="ch",
         ocr_version="PP-OCRv4",
+        rec_model_dir="ch_PP-OCRv4_server_rec",
         use_textline_orientation=True,
         device="gpu" if use_gpu else "cpu",
+        det_db_thresh=0.1,
+        det_db_box_thresh=0.1,
+        drop_score=0.1,
+        det_limit_side_len=1280,
         show_log=False,
     )
 
