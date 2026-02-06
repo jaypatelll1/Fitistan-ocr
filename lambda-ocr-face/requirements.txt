@@ -1,3 +1,4 @@
+setuptools
 boto3>=1.26.0
 psycopg[binary]>=3.1.0
 pgvector>=0.2.0

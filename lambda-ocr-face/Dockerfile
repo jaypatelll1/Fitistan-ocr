@@ -1,18 +1,26 @@
 FROM public.ecr.aws/lambda/python:3.12
 
-# Install system dependencies
+# Install system dependencies and build tools
 RUN dnf install -y \
     mesa-libGL \
     mesa-libGLU \
     libgomp \
+    gcc \
+    gcc-c++ \
+    make \
     && dnf clean all
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt ${LAMBDA_TASK_ROOT}/
-RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+WORKDIR ${LAMBDA_TASK_ROOT}
 
-# Copy function code
-COPY lambda_handler.py ${LAMBDA_TASK_ROOT}/
+COPY requirements.txt .
 
-# Set the handler
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt --no-cache-dir
+
+# Pre-download models to avoid cold start downloads
+ENV PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+RUN python -c "from paddleocr import PaddleOCR; PaddleOCR(lang='ch', show_log=False)"
+
+COPY lambda_handler.py .
+
 CMD ["lambda_handler.lambda_handler"]
