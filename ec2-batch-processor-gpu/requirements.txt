@@ -5,7 +5,7 @@ Pillow>=10.0.0
 paddlepaddle-gpu==2.6.2
 paddleocr==2.9.1
 insightface>=0.7.3
-onnxruntime-gpu>=1.16.0
+onnxruntime-gpu==1.16.3
 psycopg[binary]>=3.1.0
 pgvector>=0.2.0
 python-dotenv>=1.0.0
