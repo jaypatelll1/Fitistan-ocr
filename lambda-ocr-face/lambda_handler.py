@@ -111,6 +111,10 @@ def save_bib_numbers(conn, image_name, bibs, url):
             """
             INSERT INTO event_photo_bib_number (image_name, bib_number, url, event_code)
             VALUES (%s, %s, %s, NULL)
+            ON CONFLICT (image_name) DO UPDATE SET
+                bib_number = EXCLUDED.bib_number,
+                url = EXCLUDED.url,
+                last_modified = now()
             """,
             (image_name, json.dumps(bibs), url)
         )
