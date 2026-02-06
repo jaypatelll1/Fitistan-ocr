@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-EC2 Batch Processor - OCR & Face Embeddings
-Usage: python3 batch_processor.py s3://bucket/prefix/ [--max N] [--dry-run] [--cpu]
+EC2 Batch Processor - OCR & Face Embeddings (GPU Only)
+Usage: python3 batch_processor.py s3://bucket/prefix/ [--max N] [--workers N] [--dry-run]
 """
 
 import os
@@ -9,6 +9,7 @@ import sys
 import json
 import argparse
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -26,6 +27,7 @@ from pgvector.psycopg import register_vector
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_IMAGE_SIZE = 1200
 AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
+DEFAULT_WORKERS = 4
 
 
 def log(msg):
@@ -36,15 +38,15 @@ def error(msg):
     print(f"[ERROR] {msg}", flush=True)
 
 
-def init_models(use_gpu=True):
-    """Initialize OCR and Face models."""
-    log("Loading OCR model...")
+def init_models():
+    """Initialize OCR and Face models on GPU."""
+    log("Loading OCR model (GPU)...")
     ocr = PaddleOCR(
         lang="ch",
         ocr_version="PP-OCRv4",
         rec_model_dir="ch_PP-OCRv4_server_rec",
         use_textline_orientation=True,
-        device="gpu" if use_gpu else "cpu",
+        device="gpu",
         det_db_thresh=0.1,
         det_db_box_thresh=0.1,
         drop_score=0.1,
@@ -52,9 +54,9 @@ def init_models(use_gpu=True):
         show_log=False,
     )
 
-    log("Loading face model...")
+    log("Loading face model (GPU)...")
     face = FaceAnalysis(name="buffalo_l")
-    face.prepare(ctx_id=0 if use_gpu else -1, det_size=(1024, 1024), det_thresh=0.4)
+    face.prepare(ctx_id=0, det_size=(1024, 1024), det_thresh=0.4)
 
     return ocr, face
 
@@ -114,7 +116,6 @@ def save_to_db(conn, key, bibs, faces, bucket):
     filename = os.path.basename(key)
 
     with conn.cursor() as cur:
-        # Save bibs
         cur.execute("""
             INSERT INTO event_photo_bib_number (image_name, bib_number, url, event_code)
             VALUES (%s, %s, %s, NULL)
@@ -122,7 +123,6 @@ def save_to_db(conn, key, bibs, faces, bucket):
                 bib_number = EXCLUDED.bib_number, url = EXCLUDED.url, last_modified = now()
         """, (key, json.dumps(bibs), url))
 
-        # Save faces
         for face in faces:
             cur.execute("""
                 INSERT INTO event_face_embedding (image_name, face_index, embedding, event_code, url)
@@ -141,8 +141,8 @@ def resize_image(src, dst):
         img.save(dst)
 
 
-def process_image(ocr, face, s3, conn, bucket, key):
-    """Process single image: download, OCR, face detection, save."""
+def download_and_resize(s3, bucket, key):
+    """Download from S3 and resize image. Returns (key, resized_path) or (key, None, error)."""
     ext = os.path.splitext(key)[1] or ".jpg"
 
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
@@ -152,30 +152,52 @@ def process_image(ocr, face, s3, conn, bucket, key):
     try:
         s3.download_file(bucket, key, tmp_path)
         resize_image(tmp_path, resized_path)
-
-        bibs = extract_bibs(ocr, resized_path)
-        faces = extract_faces(face, resized_path)
-
-        if conn:
-            save_to_db(conn, key, bibs, faces, bucket)
-
-        return {"bibs": bibs, "faces": len(faces), "error": None}
-
+        os.remove(tmp_path)
+        return (key, resized_path, None)
     except Exception as e:
-        return {"bibs": [], "faces": 0, "error": str(e)}
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return (key, None, str(e))
 
-    finally:
-        for p in [tmp_path, resized_path]:
-            if os.path.exists(p):
-                os.remove(p)
+
+def process_batch(ocr, face, s3, conn, bucket, keys, workers):
+    """Process a batch of images: parallel download, sequential GPU inference."""
+    results = []
+
+    # Parallel download and resize
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(download_and_resize, s3, bucket, key) for key in keys]
+        downloaded = [f.result() for f in futures]
+
+    # Sequential GPU processing
+    for key, resized_path, download_error in downloaded:
+        if download_error:
+            results.append({"key": key, "bibs": [], "faces": 0, "error": download_error})
+            continue
+
+        try:
+            bibs = extract_bibs(ocr, resized_path)
+            faces = extract_faces(face, resized_path)
+
+            if conn:
+                save_to_db(conn, key, bibs, faces, bucket)
+
+            results.append({"key": key, "bibs": bibs, "faces": len(faces), "error": None})
+        except Exception as e:
+            results.append({"key": key, "bibs": [], "faces": 0, "error": str(e)})
+        finally:
+            if resized_path and os.path.exists(resized_path):
+                os.remove(resized_path)
+
+    return results
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Process S3 images for OCR and face embeddings")
+    parser = argparse.ArgumentParser(description="Process S3 images for OCR and face embeddings (GPU)")
     parser.add_argument("s3_path", nargs="?", help="S3 path (s3://bucket/prefix/) or set S3_PATH env")
     parser.add_argument("--max", type=int, help="Max images to process")
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help=f"Parallel downloads (default: {DEFAULT_WORKERS})")
     parser.add_argument("--dry-run", action="store_true", help="Skip database writes")
-    parser.add_argument("--cpu", action="store_true", help="Force CPU mode")
     args = parser.parse_args()
 
     # Get S3 path
@@ -190,10 +212,11 @@ def main():
     bucket, prefix = parts[0], parts[1] if len(parts) > 1 else ""
 
     log(f"Processing: s3://{bucket}/{prefix}")
+    log(f"Workers: {args.workers}")
 
     # Initialize
     s3 = boto3.client("s3", region_name=AWS_REGION)
-    ocr, face = init_models(use_gpu=not args.cpu)
+    ocr, face = init_models()
     conn = None if args.dry_run else connect_db()
 
     try:
@@ -206,15 +229,20 @@ def main():
             return
 
         success, failed = 0, 0
-        for i, key in enumerate(keys, 1):
-            result = process_image(ocr, face, s3, conn, bucket, key)
 
-            if result["error"]:
-                failed += 1
-                error(f"[{i}/{total}] ✗ {key}: {result['error']}")
-            else:
-                success += 1
-                log(f"[{i}/{total}] ✓ {key} | bibs={result['bibs']} faces={result['faces']}")
+        # Process in batches
+        for i in range(0, total, args.workers):
+            batch_keys = keys[i:i + args.workers]
+            results = process_batch(ocr, face, s3, conn, bucket, batch_keys, args.workers)
+
+            for j, result in enumerate(results):
+                idx = i + j + 1
+                if result["error"]:
+                    failed += 1
+                    error(f"[{idx}/{total}] ✗ {result['key']}: {result['error']}")
+                else:
+                    success += 1
+                    log(f"[{idx}/{total}] ✓ {result['key']} | bibs={result['bibs']} faces={result['faces']}")
 
         log(f"Complete: {success} success, {failed} failed")
 
