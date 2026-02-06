@@ -1,13 +1,18 @@
-FROM python:3.11-slim
+FROM nvidia/cuda:11.8-cudnn8-runtime-ubuntu22.04
 
-# System dependencies (including build tools for insightface)
+# Install Python and system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
     g++ \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python
 
 WORKDIR /app
 
